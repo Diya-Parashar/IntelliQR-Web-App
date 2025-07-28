@@ -35,7 +35,7 @@ No installation required! IntelliQR runs entirely in your browser.
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/intelliqr.git
+   git clone https://github.com/Diya-Parashar/IntelliQR-Web-App.git
    ```
 
 2. Open `index.html` in your web browser.
