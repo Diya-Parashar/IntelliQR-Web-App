@@ -25,6 +25,10 @@ class IntelliQRApp {
         this.scannerVideo = document.getElementById('scanner-video');
         this.scanResult = document.getElementById('scan-result');
 
+        // History elements
+        this.scanHistoryList = document.getElementById('scan-history-list');
+        this.clearHistoryBtn = document.getElementById('clear-history-btn');
+
         // Scanner option buttons
         this.scannerOptionBtns = document.querySelectorAll('.scanner-option-btn');
         this.cameraBtn = document.getElementById('camera-btn');
@@ -68,6 +72,9 @@ class IntelliQRApp {
 
         // Initialize theme based on user preference
         this.initTheme();
+
+        // Initialize scan history
+        this.scanHistory = [];
     }
 
     /**
@@ -204,6 +211,9 @@ class IntelliQRApp {
                 this.handlePaste(e);
             }
         });
+
+        // Clear history button
+        this.clearHistoryBtn.addEventListener('click', () => this.clearScanHistory());
     }
 
     /**
@@ -607,6 +617,10 @@ class IntelliQRApp {
 
             if (code && code.data) {
                 this.scanResult.textContent = code.data;
+
+                // Add to scan history
+                this.addToScanHistory(code.data);
+
                 this.showToast('QR Code detected!', 'success');
             } else {
                 this.scanResult.textContent = 'No QR code found in image';
@@ -617,6 +631,165 @@ class IntelliQRApp {
             this.scanResult.textContent = 'Error processing image';
             this.showToast('Error processing image', 'error');
         }
+    }
+
+    /**
+     * Add a QR code scan result to history
+     */
+    addToScanHistory(qrData) {
+        // Don't add duplicates of the most recent scan
+        if (this.scanHistory.length > 0 && this.scanHistory[0].data === qrData) {
+            return;
+        }
+
+        // Create history item
+        const historyItem = {
+            id: Date.now(),
+            data: qrData,
+            timestamp: new Date(),
+            isLink: this.isValidUrl(qrData)
+        };
+
+        // Add to history array
+        this.scanHistory.unshift(historyItem);
+
+        // Update history UI
+        this.renderScanHistory();
+    }
+
+    /**
+     * Clear scan history
+     */
+    clearScanHistory() {
+        this.scanHistory = [];
+        this.renderScanHistory();
+        this.showToast('Scan history cleared', 'info');
+    }
+
+    /**
+     * Render the scan history list
+     */
+    renderScanHistory() {
+        // Clear current content
+        this.scanHistoryList.innerHTML = '';
+
+        // Show empty message if no history
+        if (this.scanHistory.length === 0) {
+            this.scanHistoryList.innerHTML = '<div class="empty-history">No scans yet</div>';
+            return;
+        }
+
+        // Add history items
+        this.scanHistory.forEach(item => {
+            const historyItemEl = document.createElement('div');
+            historyItemEl.className = 'history-item';
+            historyItemEl.dataset.id = item.id;
+
+            // Format time string
+            const timeString = this.formatTime(item.timestamp);
+
+            // Create history item content
+            historyItemEl.innerHTML = `
+                <div class="history-item-content">
+                    <p class="history-item-text">${this.escapeHtml(item.data)}</p>
+                    <p class="history-item-time">${timeString}</p>
+                </div>
+                <div class="history-item-actions">
+                    <button class="history-btn copy-btn" aria-label="Copy">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path>
+                        </svg>
+                    </button>
+                    ${item.isLink ? `
+                    <button class="history-btn open-btn" aria-label="Open Link">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"></path>
+                            <polyline points="15 3 21 3 21 9"></polyline>
+                            <line x1="10" y1="14" x2="21" y2="3"></line>
+                        </svg>
+                    </button>
+                    ` : ''}
+                </div>
+            `;
+
+            // Add copy button handler
+            const copyBtn = historyItemEl.querySelector('.copy-btn');
+            copyBtn.addEventListener('click', () => this.copyToClipboard(item.data, copyBtn));
+
+            // Add open link button handler
+            if (item.isLink) {
+                const openBtn = historyItemEl.querySelector('.open-btn');
+                openBtn.addEventListener('click', () => this.openLink(item.data));
+            }
+
+            // Add to the list
+            this.scanHistoryList.appendChild(historyItemEl);
+        });
+    }
+
+    /**
+     * Format timestamp for display
+     */
+    formatTime(date) {
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    /**
+     * Copy text to clipboard
+     */
+    copyToClipboard(text, buttonEl) {
+        navigator.clipboard.writeText(text).then(() => {
+            // Show success animation
+            buttonEl.classList.add('copied');
+
+            // Show toast notification
+            this.showToast('Copied to clipboard!', 'success');
+
+            // Remove animation class after delay
+            setTimeout(() => {
+                buttonEl.classList.remove('copied');
+            }, 1500);
+        }).catch(err => {
+            console.error('Failed to copy text: ', err);
+            this.showToast('Failed to copy to clipboard', 'error');
+        });
+    }
+
+    /**
+     * Open a URL in a new tab
+     */
+    openLink(url) {
+        // Add protocol if missing
+        if (!/^https?:\/\//i.test(url)) {
+            url = 'https://' + url;
+        }
+
+        window.open(url, '_blank');
+    }
+
+    /**
+     * Check if string is a valid URL
+     */
+    isValidUrl(string) {
+        try {
+            // Test if it's a URL with or without protocol
+            return /^(https?:\/\/)?[\w.-]+\.[a-zA-Z]{2,}(\/\S*)?$/i.test(string);
+        } catch (e) {
+            return false;
+        }
+    }
+
+    /**
+     * Escape HTML special characters to prevent XSS
+     */
+    escapeHtml(unsafe) {
+        return unsafe
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
     }
 
     /**
@@ -646,6 +819,14 @@ class IntelliQRApp {
                     resolve();
                 };
             });
+
+            // Fix for mirrored camera on Android devices
+            // Check if device is likely Android
+            const isAndroid = /Android/i.test(navigator.userAgent);
+            if (isAndroid) {
+                // Apply CSS transform to fix mirroring
+                this.scannerVideo.style.transform = 'scaleX(1)';
+            }
 
             // Set canvas size to match video
             this.scanner.canvasElement.width = this.scannerVideo.videoWidth;
@@ -712,22 +893,29 @@ class IntelliQRApp {
                 const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
                 // Try to detect QR code in the frame
-                const qrCode = this.detectQRCode(imageData);
+                this.detectQRCode(imageData).then(qrCode => {
+                    if (qrCode) {
+                        // QR code detected, display result
+                        this.scanResult.textContent = qrCode;
 
-                if (qrCode) {
-                    // QR code detected, display result
-                    this.scanResult.textContent = qrCode;
-                    this.showToast('QR Code detected!', 'success');
+                        // Add to scan history
+                        this.addToScanHistory(qrCode);
 
-                    // Pause scanning briefly after successful detection
-                    this.scanner.active = false;
-                    setTimeout(() => {
-                        if (this.cameraScanner.classList.contains('active')) {
-                            this.scanner.active = true;
-                            this.scanFrames();
-                        }
-                    }, 1500);
-                }
+                        this.showToast('QR Code detected!', 'success');
+
+                        // Pause scanning briefly after successful detection
+                        this.scanner.active = false;
+                        setTimeout(() => {
+                            if (this.cameraScanner.classList.contains('active')) {
+                                this.scanner.active = true;
+                                this.scanResult.textContent = 'Scanning...';
+                                this.scanFrames();
+                            }
+                        }, 1500);
+                    }
+                }).catch(err => {
+                    console.error('QR detection error:', err);
+                });
             }
         } catch (error) {
             console.error('Error processing video frame:', error);
@@ -774,31 +962,47 @@ class IntelliQRApp {
      * Manual QR code detection using jsQR library
      */
     detectQRManually(imageData) {
-        if (!this._qrScanner) {
-            // Lazily load jsQR library if it's available
-            if (window.jsQR) {
-                this._qrScanner = window.jsQR;
+        return new Promise((resolve, reject) => {
+            if (!this._qrScanner) {
+                // Lazily load jsQR library if it's available
+                if (window.jsQR) {
+                    this._qrScanner = window.jsQR;
+                } else {
+                    // Load jsQR if not already loaded
+                    this.loadJSQR();
+                    resolve(null); // Skip this frame while loading
+                    return;
+                }
+            }
+
+            if (this._qrScanner) {
+                try {
+                    const code = this._qrScanner(
+                        imageData.data,
+                        imageData.width,
+                        imageData.height,
+                        { inversionAttempts: 'dontInvert' }
+                    );
+
+                    // Only return result if we have a valid QR code with data
+                    // This prevents false positives
+                    if (code && code.data && code.location &&
+                        code.location.topLeftCorner &&
+                        code.location.topRightCorner &&
+                        code.location.bottomLeftCorner &&
+                        code.location.bottomRightCorner) {
+                        resolve(code.data);
+                    } else {
+                        resolve(null);
+                    }
+                } catch (error) {
+                    console.error('jsQR detection error:', error);
+                    resolve(null);
+                }
             } else {
-                // Load jsQR if not already loaded
-                this.loadJSQR();
-                return null; // Skip this frame while loading
+                resolve(null);
             }
-        }
-
-        if (this._qrScanner) {
-            const code = this._qrScanner(
-                imageData.data,
-                imageData.width,
-                imageData.height,
-                { inversionAttempts: 'dontInvert' }
-            );
-
-            if (code && code.data) {
-                return code.data;
-            }
-        }
-
-        return null;
+        });
     }
 
     /**
